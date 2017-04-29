@@ -1,41 +1,70 @@
 
-# TODO You should set "http://localhost/callback" as your callback URL
+# TODO automate the token pass through
 
 import json
 import requests
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import MobileApplicationClient
+import pprint
+import elasticsearch
+import bs4
 
-# Set up your client ID and scope: the scope must match that which you requested when you set up your application.
-client_id = "2288TW"
-scope = ["activity", "heartrate", "location", "nutrition", "profile", "settings", "sleep", "social", "weight"]
+def main():
 
-# Initialize client
-client = MobileApplicationClient(client_id)
-fitbit = OAuth2Session(client_id, client=client, scope=scope)
-authorization_url = "https://www.fitbit.com/oauth2/authorize"
+    client_id = "2288TW"
+    code = "6b01dd23c0ff08ea7c67ad4c7b607a8f"
+    # Full scope scope = ["activity", "heartrate", "location", "nutrition", "profile", "settings", "sleep", "social", "weight"]
+    scope = ["heartrate"]
 
-# Grab the URL for Fitbit's authorization page.
-auth_url, state = fitbit.authorization_url(authorization_url)
-print(auth_url, state)
-print("Visit this page in your browser: {}".format(auth_url))
+    # Initialize client
+    client = MobileApplicationClient(client_id)
 
-token = fitbit.access_token
+    fitbit = OAuth2Session(client_id, client=client, scope=scope)
+    authorization_url = "https://www.fitbit.com/oauth2/authorize"
 
-# After authenticating, Fitbit will redirect you to the URL you specified in your application settings. It contains the access token.
-callback_url = input("Paste URL you get back here: ")
+    # Grab the URL for Fitbit's authorization page.
+    auth_url, state = fitbit.authorization_url(authorization_url)
+    # print(auth_url, state)
 
-# Now we extract the token from the URL to make use of it.
-fitbit.token_from_fragment(callback_url)
+    print("Visit this page in your browser: {}".format(auth_url))
 
-# We can also store the token for use later.
-#token = fitbit['token']
+    """After authenticating,  Fitbit will redirect you to the URL 
+        you specified in your application settings. 
+        It contains the access token."""
 
-# At this point, assuming nothing blew up, we can make calls to the API as normal, for example:
-r = fitbit.get('https://api.fitbit.com/1/user/-/sleep/goal.json')
-user = json.loads(fitbit.get('https://api.fitbit.com/1/user/-/profile.json?2288TW=6b01dd23c0ff08ea7c67ad4c7b607a8f').content)
-heartrate = json.loads(fitbit.get('https://api.fitbit.com/1/user/-/activities/heart/date/today/1d.json?2288TW=6b01dd23c0ff08ea7c67ad4c7b607a8f').content)
+    callback_url = input("Paste URL you get back here: ")
 
-print(heartrate)
-print(user['user']['age'])
+    # Now we extract the token from the URL to make use of it.
+    strip_access_token = fitbit.token_from_fragment(callback_url)
+    # print(strip_access_token)
 
+    access_token = strip_access_token['access_token']
+    # print(access_token)
+
+    # At this point, assuming nothing blew up, we can make calls to the API as normal, for example:
+    user = json.loads(fitbit.get(
+        'https://api.fitbit.com/1/user/-/profile.json?2288TW=6b01dd23c0ff08ea7c67ad4c7b607a8f').content.decode('utf-8'))
+    # print(user_json['user']['age'])
+
+    #start_date = '2015/01/27'
+    start_date = '2017-04-18'
+
+    hr_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/{0}/{1}/{2}.json'.format(start_date, 'today', '1min')
+    print(hr_url)
+
+    #test_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/today/1d/1sec/time/00:00/00:01.json'
+    test_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/{0}/1d/1min.json'.format(start_date)
+    print(test_url)
+
+    # works!
+    #test_url = 'https://api.fitbit.com/1/user/-/activities/heart/date/today/1d/1sec.json'
+    #dict_data_heart_rate = json.loads(fitbit.get(test_url).content.decode('utf-8'))
+    json_data_heart_rate = fitbit.get(test_url).content.decode('utf-8')
+
+    es = elasticsearch.Elasticsearch()
+    es.index(index='heartrate', doc_type='fitbit_heartrate', id=start_date, body=json_data_heart_rate)
+
+    # pprint.pprint(json_data_heart_rate, width=4)
+
+if __name__ == '__main__':
+    main()
